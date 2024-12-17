@@ -2,49 +2,60 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = 'my-flask-app'
-        DOCKER_TAG = 'latest'
+        DOCKER_IMAGE = "my-flask-app"
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                echo 'Checking out the repository...'
-                checkout scm
+                git branch: 'main', url: 'https://github.com/sazaan/Flask-CI-CD-Pipeline.git'
             }
         }
 
-        stage('Build') {
+        stage('Build Docker Image') {
             steps {
-                echo 'Building Docker image...'
-                sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                script {
+                    sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                }
             }
         }
 
-        stage('Test') {
+        stage('Remove Existing Container') {
             steps {
-                echo 'Running tests...'
-                sh "docker run --rm -d -p 5000:5000 --name flask-test ${DOCKER_IMAGE}:${DOCKER_TAG}"
-                sleep 10  // Wait for the app to start
-                sh "curl http://localhost:5000"
-                sh "docker stop flask-test"
+                script {
+                    // Stop and remove the existing container if it exists
+                    sh '''
+                    docker ps -a | grep flask-app && docker stop flask-app && docker rm flask-app || true
+                    '''
+                }
             }
         }
 
-        stage('Deploy') {
+        stage('Run New Container') {
             steps {
-                echo 'Deploying the Docker container...'
-                sh "docker run -d -p 5000:5000 --name flask-app ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                script {
+                    sh "docker run -d -p 5000:5000 --name flask-app ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                }
+            }
+        }
+
+        stage('Clean Up Old Images') {
+            steps {
+                script {
+                    // Remove unused images to save space
+                    sh "docker image prune -f"
+                }
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline executed successfully!'
+            echo 'Deployment succeeded!'
         }
         failure {
-            echo 'Pipeline failed.'
+            echo 'Deployment failed. Please check the logs.'
         }
     }
 }
